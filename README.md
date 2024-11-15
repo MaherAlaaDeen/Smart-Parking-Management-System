@@ -50,6 +50,185 @@ Indicating that the system is OFF and finally a Yellow LED turns ON when there a
 
 ## MATLAB Code
 
+Create a GUI figure
 ```matlab
 fig = figure('Name', 'Smart Parking Management System', 'NumberTitle', 'off', 'Position', [100, 100, 350, 250]);
 ```
+Create Arduino Object
+```matlab
+a = arduino('COM3', 'Uno','Libraries', 'Servo');
+```
+
+Create Arduino Variables
+```matlab
+ledPinON = 'D3';
+ledPinOFF = 'D4';
+ledStatus = 'D12';
+IR1 = 'D8';
+IR2 = 'D7';
+servoPin = 'D6';
+s = servo(a, servoPin);
+```
+
+Define Variables for Servo angle
+```matlab
+Open = 0.5; % Angle = 90
+Close = 0; % Angle = 0
+```
+
+Define a Global Variable for controlling the Gate
+```matlab
+isGateOpen = true;
+```
+
+Define Variable for counting the left parkings
+```matlab
+Parkings = 4;
+```
+
+Initialize System States
+```matlab
+startState = 0; % 0 for off, 1 for on
+stopState = 0;  % 0 for off, 1 for on
+```
+
+Create "Start" button
+```matlab
+startBtn = uicontrol('Style', 'pushbutton', 'String', 'Start', 'Position', [60, 50, 100, 30]);
+    set(startBtn, 'Callback', @startCallback);
+```
+
+Create "Stop" Button
+```matlab
+stopBtn = uicontrol('Style', 'pushbutton', 'String', 'Stop', 'Position', [200, 50, 100, 30]);
+    set(stopBtn, 'Callback', @stopCallback);
+```
+
+Create LED Indicators for "Start" and "Stop"
+```matlab
+startIndicator = uicontrol('Style', 'frame', 'Position', [60, 175, 70, 30]);
+set(startIndicator, 'BackgroundColor', 'red'); % Initialize "Start" indicator as red
+stopIndicator = uicontrol('Style', 'frame', 'Position', [230, 175, 70, 30]);
+set(stopIndicator, 'BackgroundColor', 'red');  % Initialize "Stop" indicator as red
+```
+
+Initialize Led State
+```matlab
+numLEDs = 4;
+ledState = zeros(1, numLEDs); % 0 for red, 1 for green
+```
+
+Create LED Indicators
+```matlab
+leds = cell(1, numLEDs);
+ledPositions = [60, 100; 120, 100; 180, 100; 240, 100]; % LED positions
+for i = 1:numLEDs
+   leds{i} = uicontrol('Style', 'frame', 'Position', [ledPositions(i, 1), ledPositions(i, 2), 60, 60]);
+   set(leds{i}, 'BackgroundColor', 'green'); % Initialize as red
+end
+```
+
+Create LED Count Label
+```matlab
+ledCountLabel = uicontrol('Style', 'text','FontSize',12, 'Position', [145, 165, 70, 40]);
+set(ledCountLabel, 'String', ['Parkings Left: ' num2str(Parkings)]);
+```
+
+Create Text Label
+```matlab
+label = uicontrol('Style', 'text', 'String', 'Sys OFF','FontSize',15, 'Position', [130, 210, 100, 30]);
+writeDigitalPin(a, ledPinOFF,1);
+writePosition(s,Close);
+```
+
+Callback Function for the "Start" buttom
+```matlab
+function startCallback(~, ~)
+        if startState == 0
+            set(startIndicator, 'BackgroundColor', 'green'); % Turn on the "Start" indicator
+            set(label, 'String', 'Sys ON'); % Update the label
+            startState = 1;
+            
+            % If "Start" is pressed, turn off the "Stop" indicator
+            set(stopIndicator, 'BackgroundColor', 'red');
+            stopState = 0;
+            writeDigitalPin(a, ledPinON, 1);
+            writeDigitalPin(a, ledPinOFF, 0);
+            writeDigitalPin(a, ledStatus, 1);
+           
+        end
+        while startState
+            sensor1 = readDigitalPin(a, IR1);
+            sensor2 = readDigitalPin(a, IR2);
+
+            if sensor1 == 0 && ~isGateOpen && Parkings >0
+                writePosition(s, Open);
+                isGateOpen = true;
+                for i = 1:numLEDs
+                    if ledState(i) == 0
+                        set(leds{i}, 'BackgroundColor', 'red'); % Turn on the LED
+                        ledState(i) = 1;
+                        Parkings = Parkings - 1;
+                        set(ledCountLabel, 'String', ['Parkings left: ' num2str(Parkings)]);
+                        if Parkings == 0
+                            writeDigitalPin(a, ledStatus, 0);
+                        end
+                        break;
+                    end
+                end
+                pause(0.5);
+            elseif sensor2 == 0 && isGateOpen
+                writePosition(s, Close)
+                isGateOpen = false;
+                pause(0.5);
+            elseif sensor2 == 0 && ~isGateOpen && Parkings<4
+                writePosition(s, Open);
+                isGateOpen = true;
+                for i = numLEDs:-1:1
+                    if ledState(i) == 1
+                        set(leds{i}, 'BackgroundColor', 'green'); % Turn off the LED
+                        ledState(i) = 0;
+                        Parkings = Parkings + 1;
+                        set(ledCountLabel, 'String', ['Parkings left: ' num2str(Parkings)]);
+                        if Parkings ~= 0
+                            writeDigitalPin(a, ledStatus, 1);
+                        end
+                        break;
+                    end
+                end
+                pause(0.5);
+            elseif sensor1 == 0 && isGateOpen
+                writePosition(s, Close);
+                isGateOpen = false;
+                pause(0.5);
+            end
+        end
+    end
+```
+
+Callback Function for the "Stop" Button
+```matlab
+    function stopCallback(~, ~)
+        if stopState == 0
+            set(stopIndicator, 'BackgroundColor', 'green'); % Turn on the "Stop" indicator
+            set(label, 'String', 'Sys OFF'); % Update the label
+            stopState = 1;
+            
+            % If "Stop" is pressed, turn off the "Start" indicator
+            set(startIndicator, 'BackgroundColor', 'red');
+            startState = 0;
+            writeDigitalPin(a, ledPinON, 0);
+            writeDigitalPin(a, ledPinOFF, 1);
+            writeDigitalPin(a, ledStatus, 0);
+            writePosition(s, Close);
+        end
+    end
+end
+```
+
+## Conclusion
+
+We conclude that using MATLAB and its Arduino hardware support package can result in very good solutions to the every-day problems we face in real-life, in addition to that MATLAB allows us to create GUIs in order to visualize the aspects and feedback from our system, which makes it user-friendly and easier for the usage among non-technical users.
+
+
+
